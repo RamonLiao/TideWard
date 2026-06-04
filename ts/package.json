@@ -1,0 +1,20 @@
+{
+  "name": "riskguard-ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "tsx src/deploy.ts",
+    "register": "tsx src/register.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.30.0",
+    "@pythnetwork/pyth-sui-js": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

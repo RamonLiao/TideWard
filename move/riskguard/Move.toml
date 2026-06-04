@@ -1,0 +1,13 @@
+[package]
+name = "riskguard"
+edition = "2024.beta"
+license = "Apache-2.0"
+
+[dependencies]
+# Framework deps (Sui, MoveStdlib) auto-managed by the CLI for Sui 1.45+.
+# Deploy with a testnet-matching CLI (Protocol 124) so the bundled framework aligns.
+Pyth = { git = "https://github.com/pyth-network/pyth-crosschain.git", subdir = "target_chains/sui/contracts", rev = "sui-contract-testnet" }
+Wormhole = { git = "https://github.com/wormhole-foundation/wormhole.git", subdir = "sui/wormhole", rev = "sui/testnet" }
+
+[addresses]
+riskguard = "0x0"

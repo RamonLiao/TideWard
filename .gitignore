@@ -1,0 +1,15 @@
+tasks/progress.md
+tasks/lessons.md
+
+# Claude local config (contains permission allowlist incl. testnet key)
+.claude/
+
+# Secrets / keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Move build artifacts
+move/**/build/
