@@ -45,18 +45,33 @@ public fun force_protect<M>(
 )
 ```
 
-Responsibility: forward to `policy::apply_override`, which owns **all** checks (cap binding,
-protective, flags, no-op) + the mutation, since they read `RiskPolicy` private state. `force_protect`
-is the thin public door for a `public(package)` mutation — same shape as how `oracle` wraps
-`apply_decision`. The cap binding check lives in `apply_override` (not duplicated here) so the
-package-internal fn is self-protecting, exactly like `revert_action`.
+**Responsibility split (architecture review M1): `force_protect` owns "what counts as a valid
+protective override" (override semantics); `policy::apply_override` owns "how to safely record a
+state change" (storage mechanics).** This avoids a degenerate wrapper — unlike a pure forwarder,
+`force_protect` carries the protective decision, mirroring how `oracle::post_score_and_apply`
+carries real checks before delegating to `apply_decision`. The split is feasible because
+`policy.move` exposes the needed reads as public getters (`current_ltv_cap`, `current_flags`).
+
+`force_protect` steps:
+1. **Anti-spoof (A1 runtime leg):** `assert!(caps::override_policy_id(cap) == object::id(policy), EWrongPolicy)`.
+2. **Monotonic protective** (read current state via public getters):
+   - `let cur_ltv = policy::current_ltv_cap(policy); let cur_flags = policy::current_flags(policy);`
+   - `assert!(new_ltv_bps <= cur_ltv, ENotProtective)` — LTV may only drop.
+   - `assert!(cur_flags & new_flags == cur_flags, ENotProtective)` — every currently-set flag
+     stays set (new ⊇ current); flags may only be added, never cleared.
+3. **No-op reject:** `assert!(new_ltv_bps != cur_ltv || new_flags != cur_flags, EOverrideNoop)`.
+4. Delegate to `policy::apply_override(policy, new_ltv_bps, new_flags, reason_code, clock, ctx)`.
+
+`ENotProtective` / `EOverrideNoop` are defined in `policy.move` (with the other policy errors) and
+referenced from `override.move`. Move has no cross-module `const`, so `override.move` re-declares
+the same `u64` values locally with a comment pointing at policy.move as the source of truth (same
+pattern the codebase already uses for stable cross-component error numbers).
 
 ### 2.3 Mutation — `policy.move` `apply_override` (new `public(package)`)
 
 ```move
 public(package) fun apply_override<M>(
     policy: &mut RiskPolicy<M>,
-    cap: &OverrideCap<M>,
     new_ltv_bps: u16,
     new_flags: u8,
     reason_code: u8,
@@ -65,26 +80,27 @@ public(package) fun apply_override<M>(
 )
 ```
 
-Steps (mirrors `apply_decision`, but protective semantics, no B3 throttle):
-1. `assert!(caps::override_policy_id(cap) == object::id(policy), EWrongPolicy)` — cap binding
-   (kept here too so the package-internal fn is self-protecting, like `revert_action`).
-2. `assert!(new_flags & (KNOWN_FLAGS ^ 0xFFu8) == 0, EInvalidFlags)` — no reserved bits.
-3. **Monotonic protective:**
-   - `assert!(new_ltv_bps <= policy.ltv_bps, ENotProtective)` — LTV may only drop.
-   - `assert!(policy.flags & new_flags == policy.flags, ENotProtective)` — every currently-set
-     flag stays set (new ⊇ current); flags may only be added, never cleared.
-4. **No-op reject:** `assert!(new_ltv_bps != policy.ltv_bps || new_flags != policy.flags, EOverrideNoop)`
-   — avoids empty snapshots.
-5. `let now = clock.timestamp_ms();`
-6. `prune_expired(policy, now)` — free slots whose revert window closed.
-7. `assert!(policy.pending_actions.length() < MAX_PENDING, ETooManyPending)` — anti-griefing bound.
-8. Push `ActionSnapshot { action_id: next_action_id, kind: KIND_OVERRIDE, prev_ltv_bps: policy.ltv_bps,
-   prev_flags: policy.flags, reason_code, ts_ms: now }`; bump `next_action_id`.
-9. Write `policy.ltv_bps = new_ltv_bps; policy.flags = new_flags;`.
-10. `events::emit_override_applied(...)`.
+Owns storage mechanics + structural validation only (the override-semantics checks already ran in
+`force_protect`). No `cap` param: this is `public(package)`, callable only from within the package,
+and `force_protect` is its sole caller having already done cap binding. Steps:
+1. `assert!(new_flags & (KNOWN_FLAGS ^ 0xFFu8) == 0, EInvalidFlags)` — no reserved bits
+   (`KNOWN_FLAGS` is private to policy.move, so this structural check lives here).
+2. `let now = clock.timestamp_ms();`
+3. `prune_expired(policy, now)` — free slots whose revert window closed.
+4. `assert!(policy.pending_actions.length() < MAX_PENDING, ETooManyPending)` — anti-griefing bound.
+5. Push `ActionSnapshot { action_id: policy.next_action_id, kind: KIND_OVERRIDE,
+   prev_ltv_bps: policy.ltv_bps, prev_flags: policy.flags, reason_code, ts_ms: now }`;
+   bump `next_action_id`.
+6. Write `policy.ltv_bps = new_ltv_bps; policy.flags = new_flags;`.
+7. `events::emit_override_applied(...)`.
 
 **No B3 rate limit:** force_protect is monotonic-protective (only tightens), so the loosening
 throttle does not apply. Tightening is already free in `apply_decision`.
+
+**Layering note:** the monotonic check is enforced *only* in `force_protect`, the sole caller. This
+is acceptable because `apply_override` is `public(package)` (no external bypass), and matches the
+existing `oracle → apply_decision` split where `apply_decision` trusts the oracle's prior checks.
+A red-team test asserts the monotonic guard (vectors 1–2 in §3.2) to lock the invariant.
 
 ### 2.4 New constants / errors (policy.move)
 
@@ -108,6 +124,7 @@ public struct OverrideApplied has copy, drop {
     new_ltv: u16,
     prev_flags: u8,
     new_flags: u8,
+    reason_code: u8,  // L1: carried in the event so the indexer audits the why without reading the object
     by: address,
     ts_ms: u64,
 }
@@ -115,7 +132,7 @@ public struct OverrideApplied has copy, drop {
 public(package) fun emit_override_applied(
     market: TypeName, action_id: u64,
     prev_ltv: u16, new_ltv: u16, prev_flags: u8, new_flags: u8,
-    by: address, ts_ms: u64,
+    reason_code: u8, by: address, ts_ms: u64,
 )
 ```
 
