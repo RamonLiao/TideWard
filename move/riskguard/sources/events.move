@@ -91,6 +91,22 @@ public struct UpgradeExecuted has copy, drop {
     epoch: u64,
 }
 
+/// A DAO protective override was applied via `override::force_protect`. Distinct
+/// from `ActionExecuted` (oracle-driven): this is human-driven and monotonic-
+/// protective. `reason_code` is carried here so the indexer audits the why
+/// without reading the policy object.
+public struct OverrideApplied has copy, drop {
+    market: TypeName,
+    action_id: u64,
+    prev_ltv: u16,
+    new_ltv: u16,
+    prev_flags: u8,
+    new_flags: u8,
+    reason_code: u8,
+    by: address,
+    ts_ms: u64,
+}
+
 // === Emitters (package-internal) ===
 
 public(package) fun emit_action_executed(
@@ -147,4 +163,21 @@ public(package) fun emit_upgrade_cancelled(digest: vector<u8>, epoch: u64, by: a
 /// Emitted by `upgrade_registry::execute_upgrade` once the timelock elapses.
 public(package) fun emit_upgrade_executed(digest: vector<u8>, epoch: u64) {
     event::emit(UpgradeExecuted { digest, epoch });
+}
+
+/// Emitted by `policy::apply_override` (driven by `override::force_protect`).
+public(package) fun emit_override_applied(
+    market: TypeName,
+    action_id: u64,
+    prev_ltv: u16,
+    new_ltv: u16,
+    prev_flags: u8,
+    new_flags: u8,
+    reason_code: u8,
+    by: address,
+    ts_ms: u64,
+) {
+    event::emit(OverrideApplied {
+        market, action_id, prev_ltv, new_ltv, prev_flags, new_flags, reason_code, by, ts_ms,
+    });
 }

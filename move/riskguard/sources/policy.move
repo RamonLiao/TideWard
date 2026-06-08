@@ -35,6 +35,7 @@ const FLAG_WITHDRAWS_PAUSED: u8    = 1 << 3;
 const KIND_LTV_CUT: u8  = 0;
 const KIND_FLAG_SET: u8 = 1;
 const KIND_COMBINED: u8 = 2;
+const KIND_OVERRIDE: u8 = 3; // human protective override (vs oracle-driven 0..2)
 
 // === Bounds ===
 const MAX_PENDING: u64 = 8;
@@ -235,6 +236,63 @@ public(package) fun apply_decision<M>(
         prev_ltv,
         decision.new_ltv_bps,
         score_bps,
+        now,
+    );
+}
+
+// === Protective override (called by override::force_protect) ===
+
+/// Record a DAO protective override. The caller (`override::force_protect`) has
+/// already validated cap binding + monotonic-protective semantics + no-op. This
+/// fn owns storage mechanics only: structural flag check, prune, MAX_PENDING
+/// gate, snapshot the pre-image (revertable via `revert_action`), write state,
+/// emit. No B3 throttle — an override only tightens, and tightening is free.
+public(package) fun apply_override<M>(
+    policy: &mut RiskPolicy<M>,
+    new_ltv_bps: u16,
+    new_flags: u8,
+    reason_code: u8,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    // Reserved flag bits would persist unseen by any gate — reject. KNOWN_FLAGS
+    // is private to this module, so this structural check lives here (not in
+    // override.move). Mirrors new_decision's flag guard.
+    assert!(new_flags & (KNOWN_FLAGS ^ 0xFFu8) == 0, EInvalidFlags);
+
+    let now = clock.timestamp_ms();
+
+    // Free slots whose revert window closed, then bound pending state (A2).
+    prune_expired(policy, now);
+    assert!(policy.pending_actions.length() < MAX_PENDING, ETooManyPending);
+
+    let prev_ltv = policy.ltv_bps;
+    let prev_flags = policy.flags;
+    let action_id = policy.next_action_id;
+
+    // Snapshot pre-image so the override is revertable within the window.
+    policy.pending_actions.push_back(ActionSnapshot {
+        action_id,
+        kind: KIND_OVERRIDE,
+        prev_ltv_bps: prev_ltv,
+        prev_flags,
+        reason_code,
+        ts_ms: now,
+    });
+    policy.next_action_id = action_id + 1;
+
+    policy.ltv_bps = new_ltv_bps;
+    policy.flags = new_flags;
+
+    events::emit_override_applied(
+        type_name::with_defining_ids<M>(),
+        action_id,
+        prev_ltv,
+        new_ltv_bps,
+        prev_flags,
+        new_flags,
+        reason_code,
+        ctx.sender(),
         now,
     );
 }
