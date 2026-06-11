@@ -2,6 +2,14 @@
 
 > 為什麼這樣做，不只記做了什麼。下次重啟 chat 直接讀這份。
 
+## 2026-06-11 — Hackathon 走 testnet，不部署 mainnet
+
+- **決策**：Sui Overflow demo 全程用 testnet（已部署 package `0xc91fb4f5…4003`，e2e 對真實 Pyth 驗過）。mainnet 部署不做。
+- **Why**：評審看 testnet demo 是常態；RiskGuard 是 risk policy 層，demo 不需真金流；mainnet checklist（pin Pyth/Wormhole rev commit、UpgradeCap 3-of-5 custody）成本高、對 hackathon 零加分。
+- **保留**：mainnet checklist 改寫成 README「Production Readiness」章節 —— 展現知道 testnet 與 production 差距，反而加分。
+- **已知 testnet 限制（已有 fallback）**：Cetus BUCK/USDC 無 testnet pool → 降級 Pyth + staleness-only（spec P0-2 已記）。
+- **下個任務**：前端 dApp（`sui-frontend` + `sui-ts-sdk`）。
+
 ## 鎖死的架構基石（不可動搖）
 
 1. **Policy-object-as-gate**：lender 的 borrow/liquidate entry function 必須 import 並呼叫 `riskguard::policy::assert_*_allowed`。這是 RiskGuard 與 EVM 競品的核心差異 — webhook → atomic PTB。
