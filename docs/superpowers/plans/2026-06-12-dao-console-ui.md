@@ -4,7 +4,7 @@
 
 **Goal:** Tron-styled DAO operator console (React dApp, testnet) for RiskGuard: market monitoring, emergency pause/resume, force_protect override, revert, upgrade-timelock management.
 
-**Architecture:** New `app/` Vite + React subproject. Writes (wallet + PTB) go through `@mysten/dapp-kit-react` 2.x; ALL reads (objects, owned caps, events) go through a hand-rolled JSON-RPC fetch helper (`lib/rpc.ts`) because SDK v2 removed `queryEvents` and changed read shapes — JSON-RPC shapes are stable and unit-testable. Polling via TanStack Query. Cap-driven button gating mirrors the contract's asymmetric auth.
+**Architecture:** New `app/` Vite + React subproject. Writes (wallet + PTB) AND object/cap reads go through `@mysten/dapp-kit-react` 2.x + gRPC (`client.core.*`) — JSON-RPC is deprecated. The ONE exception: historical event queries stay on a JSON-RPC fetch helper (`lib/rpc.ts`, isolated + documented) because gRPC has no `queryEvents` equivalent (streaming only, can't backfill the ticker). Parsers are transport-agnostic (take a `fields` record). Polling via TanStack Query. Cap-driven button gating mirrors the contract's asymmetric auth.
 
 **Tech Stack:** React 18, Vite 6, TypeScript, `@mysten/dapp-kit-react` ^2.0 + `@mysten/sui` ^2.0, `@tanstack/react-query`, vitest (pure-function tests only, no jsdom).
 
@@ -467,16 +467,21 @@ git commit -m "feat(app): monotonic-protective frontend validation"
 - Create: `app/src/lib/rpc.ts`, `app/src/lib/parsers.ts`
 - Test: `app/test/parsers.test.ts`
 
-Rationale (locked decision): SDK v2 removed `suix_queryEvents` from the client (gRPC streaming only) and moved reads to `client.core.*` with different shapes. Raw JSON-RPC keeps all read shapes stable + parsers unit-testable without a network.
+Rationale (locked decision, revised after user review): all object/cap reads go through **gRPC** (`client.core.*` via dapp-kit's `useCurrentClient`) — JSON-RPC is deprecated and SDK v2 removed its client. JSON-RPC survives in exactly ONE place: historical event queries, because gRPC has no `queryEvents` equivalent (only `SubscribeEvents` streaming, which can't backfill the ticker on load) and GraphQL would add a whole second stack. When gRPC grows a historical event API, only `rpc.ts` changes.
 
-- [ ] **Step 1: Create app/src/lib/rpc.ts (transport only — no parsing logic here)**
+Parsers therefore take a plain `fields` record (transport-agnostic) and a tolerant `unwrap()` for nested structs, so they unit-test without any client and survive shape differences between transports.
+
+- [ ] **Step 1: Create app/src/lib/rpc.ts (JSON-RPC — EVENT HISTORY ONLY)**
 
 ```ts
+// DEPRECATION ISOLATION: this is the only JSON-RPC touchpoint in the app.
+// gRPC (SDK v2) has no historical event query — SubscribeEvents streams
+// forward only. Replace this file when gRPC/indexer exposes event history.
 import { RPC_URL } from "../config";
 
 let nextId = 1;
 
-export async function rpc<T>(method: string, params: unknown[]): Promise<T> {
+async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const res = await fetch(RPC_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -486,19 +491,6 @@ export async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const body = await res.json();
   if (body.error) throw new Error(`RPC ${method}: ${body.error.message}`);
   return body.result as T;
-}
-
-export function getObject(objectId: string) {
-  return rpc<{ data?: { content?: { dataType: string; type: string; fields: Record<string, unknown> } } }>(
-    "sui_getObject", [objectId, { showContent: true }],
-  );
-}
-
-export function getOwnedObjects(owner: string, structType: string) {
-  return rpc<{ data: { data?: { objectId: string; type?: string } }[] }>(
-    "suix_getOwnedObjects",
-    [owner, { filter: { StructType: structType }, options: { showType: true } }, null, 50],
-  );
 }
 
 /** All riskguard events live in the events module — one query covers the ticker. */
@@ -512,65 +504,69 @@ export function queryPackageEvents(pkg: string, limit = 50) {
 
 - [ ] **Step 2: Write failing parser test**
 
-`app/test/parsers.test.ts` — fixtures mimic real `sui_getObject` JSON-RPC shapes (u64 as string, nested struct as `{type, fields}`):
+`app/test/parsers.test.ts` — parsers take a plain `fields` record (transport-agnostic). Fixtures cover both nesting styles (`{type, fields}` wrapper vs flat) because JSON-RPC wraps nested structs while gRPC core may not:
 
 ```ts
 import { describe, it, expect } from "vitest";
 import { parsePolicy, parseOracle, parseRegistry, parseEvent } from "../src/lib/parsers";
 
-const policyFixture = {
-  data: { content: { dataType: "moveObject", type: "0xPKG::policy::RiskPolicy<0x2::sui::SUI>", fields: {
-    ltv_bps: 4000, ltv_default_bps: 5000, flags: 1,
-    revert_window_ms: "60000", min_loosen_interval_ms: "3600000",
-    last_loosen_ts_ms: "0", max_conf_bps: 500, oracle_id: "0xabc",
-    next_action_id: "3",
-    pending_actions: [
-      { type: "0xPKG::policy::ActionSnapshot", fields: {
-        action_id: "2", kind: 1, prev_ltv_bps: 5000, prev_flags: 0, reason_code: 9, ts_ms: "1718000000000" } },
-    ],
-    reserved: [],
-  } } },
+const policyFields = {
+  ltv_bps: 4000, ltv_default_bps: 5000, flags: 1,
+  revert_window_ms: "60000", min_loosen_interval_ms: "3600000",
+  last_loosen_ts_ms: "0", max_conf_bps: 500, oracle_id: "0xabc",
+  next_action_id: "3",
+  pending_actions: [
+    { type: "0xPKG::policy::ActionSnapshot", fields: {
+      action_id: "2", kind: 1, prev_ltv_bps: 5000, prev_flags: 0, reason_code: 9, ts_ms: "1718000000000" } },
+  ],
+  reserved: [],
 };
 
 describe("parsePolicy", () => {
   it("converts u64 strings to numbers and unwraps nested snapshots", () => {
-    const p = parsePolicy(policyFixture as never);
+    const p = parsePolicy(policyFields as never);
     expect(p.ltvBps).toBe(4000);
     expect(p.revertWindowMs).toBe(60000);
     expect(p.pending).toHaveLength(1);
     expect(p.pending[0]).toMatchObject({ actionId: 2, kind: 1, prevLtvBps: 5000, tsMs: 1718000000000 });
   });
-  it("throws loudly on a missing/foreign object instead of returning garbage", () => {
-    expect(() => parsePolicy({ data: {} } as never)).toThrow(/content/i);
+  it("accepts FLAT nested snapshots too (gRPC shape tolerance)", () => {
+    const flat = { ...policyFields, pending_actions: [
+      { action_id: "2", kind: 1, prev_ltv_bps: 5000, prev_flags: 0, reason_code: 9, ts_ms: "1718000000000" },
+    ] };
+    expect(parsePolicy(flat as never).pending[0].actionId).toBe(2);
+  });
+  it("throws loudly on a foreign/empty record instead of returning garbage", () => {
+    expect(() => parsePolicy({} as never)).toThrow(/RiskPolicy/i);
   });
 });
 
 describe("parseOracle", () => {
   it("reads active/nonce/staleness", () => {
-    const o = parseOracle({ data: { content: { dataType: "moveObject", type: "0xPKG::oracle::RiskOracle", fields: {
+    const o = parseOracle({
       active: true, latest_score_bps: 7777, latest_score_ts_ms: "1718000000000",
       nonce: "5", max_staleness_ms: "60000", expected_feed_id: [1, 2],
-    } } } } as never);
+    } as never);
     expect(o).toMatchObject({ active: true, latestScoreBps: 7777, nonce: 5, maxStalenessMs: 60000 });
   });
 });
 
 describe("parseRegistry", () => {
   it("handles no pending (Option none)", () => {
-    const r = parseRegistry({ data: { content: { dataType: "moveObject", type: "0xPKG::upgrade_registry::UpgradeRegistry", fields: {
+    const r = parseRegistry({
       timelock_ms: "259200000", epoch: "1", pending: null,
       cap: { type: "0x2::package::UpgradeCap", fields: { version: "1", policy: 0 } },
-    } } } } as never);
+    } as never);
     expect(r.pending).toBeNull();
     expect(r.capVersion).toBe(1);
   });
-  it("handles a pending proposal (Option some)", () => {
-    const r = parseRegistry({ data: { content: { dataType: "moveObject", type: "t", fields: {
+  it("handles a pending proposal (Option some), flat or wrapped", () => {
+    const r = parseRegistry({
       timelock_ms: "259200000", epoch: "2",
       pending: { type: "0xPKG::upgrade_registry::PendingUpgrade", fields: {
         digest: [1], policy: 0, proposed_at_ms: "1718000000000", epoch: "2" } },
-      cap: { type: "0x2::package::UpgradeCap", fields: { version: "1", policy: 0 } },
-    } } } } as never);
+      cap: { version: "1", policy: 0 },
+    } as never);
     expect(r.pending).toMatchObject({ proposedAtMs: 1718000000000, policy: 0 });
   });
 });
@@ -598,18 +594,19 @@ Expected: FAIL.
 - [ ] **Step 4: Implement app/src/lib/parsers.ts**
 
 ```ts
-// Raw JSON-RPC object/event payloads → typed domain objects.
-// u64 arrives as string, u8/u16 as number, nested structs as {type, fields}.
-
-type RawObject = { data?: { content?: { dataType: string; type: string; fields: Record<string, any> } } };
-
-function fields(raw: RawObject, what: string): Record<string, any> {
-  const c = raw.data?.content;
-  if (!c || c.dataType !== "moveObject") throw new Error(`${what}: object has no moveObject content`);
-  return c.fields;
-}
+// Move object fields → typed domain objects. Transport-agnostic: callers
+// (hooks) extract the fields record from their client's response shape.
+// u64 arrives as string, u8/u16 as number; nested structs may be wrapped
+// ({type, fields}) by JSON-RPC or flat in other transports — unwrap() handles both.
 
 const n = (v: string | number): number => Number(v);
+
+/** Tolerates both `{type, fields: {...}}` wrappers and flat records. */
+const unwrap = (s: any): Record<string, any> => (s && typeof s === "object" && "fields" in s ? s.fields : s);
+
+function expectField(f: Record<string, any>, key: string, what: string): void {
+  if (!(key in f)) throw new Error(`${what}: missing field '${key}' — wrong object or transport shape changed`);
+}
 
 export interface PendingAction {
   actionId: number; kind: number; prevLtvBps: number;
@@ -621,17 +618,17 @@ export interface PolicyState {
   maxConfBps: number; oracleId: string; pending: PendingAction[];
 }
 
-export function parsePolicy(raw: RawObject): PolicyState {
-  const f = fields(raw, "RiskPolicy");
+export function parsePolicy(f: Record<string, any>): PolicyState {
+  expectField(f, "ltv_bps", "RiskPolicy");
   return {
     ltvBps: n(f.ltv_bps), ltvDefaultBps: n(f.ltv_default_bps), flags: n(f.flags),
     revertWindowMs: n(f.revert_window_ms), minLoosenIntervalMs: n(f.min_loosen_interval_ms),
     lastLoosenTsMs: n(f.last_loosen_ts_ms), maxConfBps: n(f.max_conf_bps),
     oracleId: String(f.oracle_id),
-    pending: (f.pending_actions as any[]).map((s) => ({
-      actionId: n(s.fields.action_id), kind: n(s.fields.kind),
-      prevLtvBps: n(s.fields.prev_ltv_bps), prevFlags: n(s.fields.prev_flags),
-      reasonCode: n(s.fields.reason_code), tsMs: n(s.fields.ts_ms),
+    pending: (f.pending_actions as any[]).map(unwrap).map((s) => ({
+      actionId: n(s.action_id), kind: n(s.kind),
+      prevLtvBps: n(s.prev_ltv_bps), prevFlags: n(s.prev_flags),
+      reasonCode: n(s.reason_code), tsMs: n(s.ts_ms),
     })),
   };
 }
@@ -641,8 +638,8 @@ export interface OracleState {
   nonce: number; maxStalenessMs: number;
 }
 
-export function parseOracle(raw: RawObject): OracleState {
-  const f = fields(raw, "RiskOracle");
+export function parseOracle(f: Record<string, any>): OracleState {
+  expectField(f, "active", "RiskOracle");
   return {
     active: Boolean(f.active), latestScoreBps: n(f.latest_score_bps),
     latestScoreTsMs: n(f.latest_score_ts_ms), nonce: n(f.nonce),
@@ -655,15 +652,15 @@ export interface RegistryState {
   pending: { digest: number[]; policy: number; proposedAtMs: number; epoch: number } | null;
 }
 
-export function parseRegistry(raw: RawObject): RegistryState {
-  const f = fields(raw, "UpgradeRegistry");
-  const p = f.pending;
+export function parseRegistry(f: Record<string, any>): RegistryState {
+  expectField(f, "timelock_ms", "UpgradeRegistry");
+  const p = f.pending ? unwrap(f.pending) : null;
   return {
     timelockMs: n(f.timelock_ms), epoch: n(f.epoch),
-    capVersion: n(f.cap.fields.version),
+    capVersion: n(unwrap(f.cap).version),
     pending: p
-      ? { digest: p.fields.digest as number[], policy: n(p.fields.policy),
-          proposedAtMs: n(p.fields.proposed_at_ms), epoch: n(p.fields.epoch) }
+      ? { digest: p.digest as number[], policy: n(p.policy),
+          proposedAtMs: n(p.proposed_at_ms), epoch: n(p.epoch) }
       : null,
   };
 }
@@ -969,11 +966,13 @@ declare module "@mysten/dapp-kit-react" {
 
 - [ ] **Step 2: Create app/src/hooks/useChain.ts**
 
+All object/cap reads go through the gRPC client (`useCurrentClient().core.*`). The exact response property names for `core.getObject` content fields must be **verified against the installed `@mysten/sui` 2.x types at implementation time** (open `node_modules/@mysten/sui/dist/.../core` types or `console.log` one live read in Step 4): the `extractFields()` helper below is the single adaptation point — adjust it, not the parsers, if the shape differs.
+
 ```ts
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCurrentAccount, useCurrentClient, useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
-import { getObject, getOwnedObjects, queryPackageEvents } from "../lib/rpc";
+import { queryPackageEvents } from "../lib/rpc";
 import { parsePolicy, parseOracle, parseRegistry, parseEvent } from "../lib/parsers";
 import { resolveCaps, type CapSet } from "../lib/caps";
 import { explainTxError } from "../lib/abortCodes";
@@ -981,28 +980,38 @@ import { PKG, REGISTRY_ID, type MarketConfig } from "../config";
 
 const POLL_MS = 7000;
 
-export function usePolicy(m: MarketConfig) {
+/** Single adaptation point between the gRPC response and the field parsers.
+ * Verified against installed @mysten/sui 2.x in Task 7 Step 4 — if the SDK
+ * exposes content differently (e.g. `object.contents.fields` vs `json`),
+ * change ONLY this function. Throws loudly rather than returning garbage. */
+function extractFields(res: any, what: string): Record<string, any> {
+  const f = res?.object?.content?.fields ?? res?.object?.json ?? res?.data?.content?.fields;
+  if (!f || typeof f !== "object") throw new Error(`${what}: cannot locate fields in gRPC response — update extractFields()`);
+  return f;
+}
+
+function useObjectQuery<T>(key: string, objectId: string, parse: (f: Record<string, any>) => T) {
+  const client = useCurrentClient();
   return useQuery({
-    queryKey: ["policy", m.policyId],
-    queryFn: async () => parsePolicy(await getObject(m.policyId)),
+    queryKey: [key, objectId],
+    queryFn: async () => {
+      const res = await client.core.getObject({ objectId, include: { content: true } });
+      return parse(extractFields(res, key));
+    },
     refetchInterval: POLL_MS,
   });
+}
+
+export function usePolicy(m: MarketConfig) {
+  return useObjectQuery("policy", m.policyId, parsePolicy);
 }
 
 export function useOracle(m: MarketConfig) {
-  return useQuery({
-    queryKey: ["oracle", m.oracleId],
-    queryFn: async () => parseOracle(await getObject(m.oracleId)),
-    refetchInterval: POLL_MS,
-  });
+  return useObjectQuery("oracle", m.oracleId, parseOracle);
 }
 
 export function useRegistry() {
-  return useQuery({
-    queryKey: ["registry", REGISTRY_ID],
-    queryFn: async () => parseRegistry(await getObject(REGISTRY_ID)),
-    refetchInterval: POLL_MS,
-  });
+  return useObjectQuery("registry", REGISTRY_ID, parseRegistry);
 }
 
 export function useEvents() {
@@ -1017,14 +1026,18 @@ const CAP_TYPES = ["AdminCap", "EmergencyStopCap", "RiskOraclePublisherCap", "Ov
 
 export function useCaps(): { caps: CapSet; isPending: boolean } {
   const account = useCurrentAccount();
+  const client = useCurrentClient();
   const q = useQuery({
     queryKey: ["caps", account?.address],
     queryFn: async () => {
-      const owned = await Promise.all(
-        CAP_TYPES.map((t) => getOwnedObjects(account!.address, `${PKG}::caps::${t}`)),
+      // listOwnedObjects type filter matches OverrideCap<...> instantiations by prefix.
+      const pages = await Promise.all(
+        CAP_TYPES.map((t) =>
+          client.core.listOwnedObjects({ owner: account!.address, type: `${PKG}::caps::${t}`, cursor: null }),
+        ),
       );
-      const flat = owned.flatMap((page) =>
-        page.data.map((d) => ({ objectId: d.data!.objectId, type: d.data!.type })),
+      const flat = pages.flatMap((p: any) =>
+        (p.objects ?? []).map((o: any) => ({ objectId: o.objectId ?? o.id, type: o.type })),
       );
       return resolveCaps(PKG, flat);
     },
@@ -1081,10 +1094,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
 (`theme.css` arrives in Task 8 — create an empty `app/src/theme.css` now so tsc/vite don't break.)
 
-- [ ] **Step 4: Type-check**
+- [ ] **Step 4: Type-check + verify gRPC response shape against the installed SDK**
 
-Run: `cd app && pnpm exec tsc --noEmit`
-Expected: clean. (App.tsx still scaffold-default; replaced next task.)
+Run: `cd app && pnpm exec tsc --noEmit` — expected clean. (App.tsx still scaffold-default; replaced next task.)
+
+Then verify `extractFields()` against reality: check the return type of `client.core.getObject` in the installed `@mysten/sui` types; if still ambiguous, run a one-off node/browser-console read of the deployed policy object and inspect where the Move fields live. Fix `extractFields()` (and the `listOwnedObjects` mapping in `useCaps`) to match — parsers and components stay untouched.
 
 - [ ] **Step 5: Commit**
 
