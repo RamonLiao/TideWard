@@ -45,8 +45,10 @@ async function main() {
   const oracleId = findCreated(res.objectChanges, "::oracle::RiskOracle");
   const policyId = findCreated(res.objectChanges, "::policy::RiskPolicy");
   const publisherCapId = findCreated(res.objectChanges, "::caps::RiskOraclePublisherCap");
-  const saved = writeDeployed({ oracleId, policyId, publisherCapId });
-  console.log("registered:", { oracleId, policyId, publisherCapId });
+  const emergencyCapId = findCreated(res.objectChanges, "::caps::EmergencyStopCap");
+  const overrideCapId = findCreated(res.objectChanges, "::caps::OverrideCap");
+  const saved = writeDeployed({ oracleId, policyId, publisherCapId, emergencyCapId, overrideCapId });
+  console.log("registered:", { oracleId, policyId, publisherCapId, emergencyCapId, overrideCapId });
   console.log("wrote ts/.deployed.json:", saved);
 }
 

@@ -43,8 +43,9 @@ async function main() {
 
   const packageId = findPublishedPackage(res.objectChanges);
   const adminCapId = findCreated(res.objectChanges, "::caps::AdminCap");
-  const saved = writeDeployed({ packageId, adminCapId });
-  console.log("published:", { packageId, adminCapId });
+  const upgradeCapId = findCreated(res.objectChanges, "::package::UpgradeCap");
+  const saved = writeDeployed({ packageId, adminCapId, upgradeCapId });
+  console.log("published:", { packageId, adminCapId, upgradeCapId });
   console.log("wrote ts/.deployed.json:", saved);
 }
 

@@ -23,6 +23,10 @@ export type Deployed = {
   oracleId?: string;
   policyId?: string;
   publisherCapId?: string;
+  emergencyCapId?: string;
+  overrideCapId?: string;
+  upgradeCapId?: string;
+  upgradeRegistryId?: string;
 };
 
 export function readDeployed(): Deployed {

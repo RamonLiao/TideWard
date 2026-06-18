@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy": "tsx src/deploy.ts",
-    "register": "tsx src/register.ts",
+    "deploy": "tsx --env-file=.env src/deploy.ts",
+    "register": "tsx --env-file=.env src/register.ts",
+    "init-registry": "tsx --env-file=.env src/init-registry.ts",
     "test": "vitest run"
   },
   "dependencies": {
