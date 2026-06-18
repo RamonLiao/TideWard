@@ -1,0 +1,77 @@
+import { describe, it, expect } from "vitest";
+import { parsePolicy, parseOracle, parseRegistry, parseEvent } from "../src/lib/parsers";
+
+const policyFields = {
+  ltv_bps: 4000, ltv_default_bps: 5000, flags: 1,
+  revert_window_ms: "60000", min_loosen_interval_ms: "3600000",
+  last_loosen_ts_ms: "0", max_conf_bps: 500, oracle_id: "0xabc",
+  next_action_id: "3",
+  pending_actions: [
+    { type: "0xPKG::policy::ActionSnapshot", fields: {
+      action_id: "2", kind: 1, prev_ltv_bps: 5000, prev_flags: 0, reason_code: 9, ts_ms: "1718000000000" } },
+  ],
+  reserved: [],
+};
+
+describe("parsePolicy", () => {
+  it("converts u64 strings to numbers and unwraps nested snapshots", () => {
+    const p = parsePolicy(policyFields as never);
+    expect(p.ltvBps).toBe(4000);
+    expect(p.revertWindowMs).toBe(60000);
+    expect(p.pending).toHaveLength(1);
+    expect(p.pending[0]).toMatchObject({ actionId: 2, kind: 1, prevLtvBps: 5000, tsMs: 1718000000000 });
+  });
+  it("accepts FLAT nested snapshots too (gRPC shape tolerance)", () => {
+    const flat = { ...policyFields, pending_actions: [
+      { action_id: "2", kind: 1, prev_ltv_bps: 5000, prev_flags: 0, reason_code: 9, ts_ms: "1718000000000" },
+    ] };
+    expect(parsePolicy(flat as never).pending[0].actionId).toBe(2);
+  });
+  it("throws loudly on a foreign/empty record instead of returning garbage", () => {
+    expect(() => parsePolicy({} as never)).toThrow(/RiskPolicy/i);
+  });
+});
+
+describe("parseOracle", () => {
+  it("reads active/nonce/staleness", () => {
+    const o = parseOracle({
+      active: true, latest_score_bps: 7777, latest_score_ts_ms: "1718000000000",
+      nonce: "5", max_staleness_ms: "60000", expected_feed_id: [1, 2],
+    } as never);
+    expect(o).toMatchObject({ active: true, latestScoreBps: 7777, nonce: 5, maxStalenessMs: 60000 });
+  });
+});
+
+describe("parseRegistry", () => {
+  it("handles no pending (Option none)", () => {
+    const r = parseRegistry({
+      timelock_ms: "259200000", epoch: "1", pending: null,
+      cap: { type: "0x2::package::UpgradeCap", fields: { version: "1", policy: 0 } },
+    } as never);
+    expect(r.pending).toBeNull();
+    expect(r.capVersion).toBe(1);
+  });
+  it("handles a pending proposal (Option some), flat or wrapped", () => {
+    const r = parseRegistry({
+      timelock_ms: "259200000", epoch: "2",
+      pending: { type: "0xPKG::upgrade_registry::PendingUpgrade", fields: {
+        digest: [1], policy: 0, proposed_at_ms: "1718000000000", epoch: "2" } },
+      cap: { version: "1", policy: 0 },
+    } as never);
+    expect(r.pending).toMatchObject({ proposedAtMs: 1718000000000, policy: 0 });
+  });
+});
+
+describe("parseEvent", () => {
+  it("extracts short name + keeps payload", () => {
+    const e = parseEvent({
+      id: { txDigest: "D", eventSeq: "0" },
+      type: "0xPKG::events::OverrideApplied",
+      parsedJson: { reason_code: 2 },
+      timestampMs: "1718000000000",
+    } as never);
+    expect(e.name).toBe("OverrideApplied");
+    expect(e.tsMs).toBe(1718000000000);
+    expect(e.json).toEqual({ reason_code: 2 });
+  });
+});

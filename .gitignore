@@ -16,3 +16,14 @@ move/**/build/
 
 # Brainstorm visual companion sessions
 .superpowers/
+
+# app build & generated env
+app/dist/
+app/.env.local
+
+# playwright + verification artifacts
+.playwright-mcp/
+riskguard-console-live.png
+
+# keep dummy test env (vitest needs it; overrides .env.* rule)
+!app/.env.test
