@@ -1,13 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { MarketConfig } from "../config";
 import { PKG } from "../config";
 import { usePolicy, useOracle, useCaps, useExecute, useEvents } from "../hooks/useChain";
 import { buildPause, buildResume, buildRevert } from "../lib/tx";
-import { gate } from "../lib/caps";
+import { gate, overrideCapIdFor } from "../lib/caps";
 import { ForceProtectForm } from "./ForceProtectForm";
 import { FLAG_LABELS } from "../lib/monotonic";
+import { eventMatchesMarket } from "../lib/parsers";
 
 const KIND = ["?", "FLAG_SET", "LTV", "OVERRIDE"]; // kind 3 = KIND_OVERRIDE
+
+/** ms → "Hh MM:SS" / "MM:SS", padded for a stable-width live countdown. */
+function fmtCountdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}h ${mm}:${ss}` : `${mm}:${ss}`;
+}
 
 export function MarketDrawer({ market, onClose }: { market: MarketConfig; onClose: () => void }) {
   const policy = usePolicy(market);
@@ -16,6 +28,11 @@ export function MarketDrawer({ market, onClose }: { market: MarketConfig; onClos
   const execute = useExecute();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000); // live revert countdown
+    return () => clearInterval(t);
+  }, []);
 
   const run = async (label: string, tx: Parameters<typeof execute>[0]) => {
     setBusy(label); setErr(null);
@@ -27,11 +44,10 @@ export function MarketDrawer({ market, onClose }: { market: MarketConfig; onClos
     return <aside className="drawer"><button className="btn" onClick={onClose}>✕</button><p className="dim">loading…</p></aside>;
   }
   const p = policy.data, o = oracle.data;
-  const overrideCapId = caps.overrideCapIds[market.marketType] ?? null;
+  const overrideCapId = overrideCapIdFor(caps, market.marketType);
   const gOverride = gate(overrideCapId, `OverrideCap<${market.label}>`);
   const gPause = gate(caps.emergencyCapId, "EmergencyStopCap");
   const gResume = gate(caps.adminCapId, "AdminCap");
-  const now = Date.now();
 
   return (
     <aside className="drawer">
@@ -72,8 +88,12 @@ export function MarketDrawer({ market, onClose }: { market: MarketConfig; onClos
           return (
             <div key={a.actionId} style={{ borderTop: "1px dashed var(--border-dim)", padding: "6px 0", fontSize: 11 }}>
               <span className="status-warn">#{a.actionId}</span> {KIND[a.kind] ?? a.kind} · prev ltv {a.prevLtvBps} · reason {a.reasonCode}
-              <div className="dim">
-                {revertable ? `revertable ${Math.ceil(remainMs / 60000)}m more` : "window closed"}{" "}
+              <div className="dim" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {revertable
+                    ? <>revert window <span className="status-warn">{fmtCountdown(remainMs)}</span></>
+                    : "window closed"}
+                </span>
                 <button className="btn" style={{ fontSize: 10, padding: "2px 8px" }}
                   disabled={!gOverride.enabled || !revertable || busy !== null}
                   title={gOverride.tooltip ?? (revertable ? "" : "revert window closed")}
@@ -95,10 +115,7 @@ export function MarketDrawer({ market, onClose }: { market: MarketConfig; onClos
 
 function MarketEvents({ market }: { market: MarketConfig }) {
   const events = useEvents();
-  const mine = (events.data ?? []).filter((e) => {
-    const s = JSON.stringify(e.json);
-    return s.includes(market.marketType) || s.includes(market.policyId) || s.includes(market.oracleId);
-  });
+  const mine = (events.data ?? []).filter((e) => eventMatchesMarket(e.json, market));
   return (
     <section style={{ marginTop: 16 }}>
       <h3 style={{ color: "var(--cyan-soft)", fontSize: 13 }}>MARKET EVENTS</h3>

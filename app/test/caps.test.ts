@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveCaps, gate } from "../src/lib/caps";
+import { resolveCaps, gate, overrideCapIdFor } from "../src/lib/caps";
 
 // Intent: buttons must mirror contract auth exactly — pause needs
 // EmergencyStopCap, resume needs AdminCap, override/revert need OverrideCap<M>.
@@ -13,7 +13,16 @@ describe("resolveCaps", () => {
     ]);
     expect(caps.adminCapId).toBe("0x1");
     expect(caps.emergencyCapId).toBe("0x2");
-    expect(caps.overrideCapIds["0x2::sui::SUI"]).toBe("0x3");
+    expect(overrideCapIdFor(caps, "0x2::sui::SUI")).toBe("0x3");
+  });
+  it("matches OverrideCap across short/full address forms (regression: drawer cap gate)", () => {
+    // On-chain object types carry full padded addresses; config uses short form.
+    // The two MUST resolve to the same cap or the FORCE PROTECT / REVERT buttons
+    // stay disabled even though the wallet holds the cap.
+    const full = "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI";
+    const caps = resolveCaps(PKG, [{ objectId: "0x3", type: `${PKG}::caps::OverrideCap<${full}>` }]);
+    expect(overrideCapIdFor(caps, "0x2::sui::SUI")).toBe("0x3");
+    expect(overrideCapIdFor(caps, full)).toBe("0x3");
   });
   it("ignores foreign-package lookalikes (anti-spoof: type prefix must match PKG)", () => {
     const caps = resolveCaps(PKG, [{ objectId: "0x9", type: "0xEVIL::caps::AdminCap" }]);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePolicy, parseOracle, parseRegistry, parseEvent } from "../src/lib/parsers";
+import { parsePolicy, parseOracle, parseRegistry, parseEvent, eventMatchesMarket } from "../src/lib/parsers";
 
 const policyFields = {
   ltv_bps: 4000, ltv_default_bps: 5000, flags: 1,
@@ -73,5 +73,23 @@ describe("parseEvent", () => {
     expect(e.name).toBe("OverrideApplied");
     expect(e.tsMs).toBe(1718000000000);
     expect(e.json).toEqual({ reason_code: 2 });
+  });
+});
+
+describe("eventMatchesMarket", () => {
+  const market = { marketType: "0x2::sui::SUI", policyId: "0xpol", oracleId: "0xora" };
+  it("matches OverrideApplied carrying only the full-padded TypeName (regression)", () => {
+    // OverrideApplied has no policy/oracle id, only the market TypeName, which the
+    // chain serializes full-padded without 0x. Short-form includes() alone misses it.
+    const json = { action_id: "0", market: { name: "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI" } };
+    expect(eventMatchesMarket(json, market)).toBe(true);
+  });
+  it("matches events carrying the oracle/policy id", () => {
+    expect(eventMatchesMarket({ oracle: "0xora" }, market)).toBe(true);
+    expect(eventMatchesMarket({ policy_id: "0xpol" }, market)).toBe(true);
+  });
+  it("rejects an unrelated market's event", () => {
+    const other = { market: { name: "000000000000000000000000000000000000000000000000000000000000dead::coin::FOO" } };
+    expect(eventMatchesMarket(other, market)).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import { MarketsPage } from "./components/MarketsPage";
 import { EmergencyPage } from "./components/EmergencyPage";
 import { OverridePage } from "./components/OverridePage";
 import { UpgradesPage } from "./components/UpgradesPage";
+import { DocsPage } from "./components/DocsPage";
 
 export default function App() {
   const [page, setPage] = useState<Page>("markets");
@@ -19,6 +20,7 @@ export default function App() {
           {page === "emergency" && <EmergencyPage />}
           {page === "override" && <OverridePage />}
           {page === "upgrades" && <UpgradesPage />}
+          {page === "docs" && <DocsPage />}
         </main>
       </div>
       <EventTicker />

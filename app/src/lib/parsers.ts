@@ -5,6 +5,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { normalizeStructTag } from "@mysten/sui/utils";
+
 const n = (v: string | number): number => Number(v);
 
 /** Tolerates both `{type, fields: {...}}` wrappers and flat records. */
@@ -82,4 +84,23 @@ export function parseEvent(raw: { id: { txDigest: string; eventSeq: string }; ty
     tsMs: raw.timestampMs ? Number(raw.timestampMs) : 0,
     json: raw.parsedJson,
   };
+}
+
+/** True when a package event belongs to the given market. Matches on policy/oracle
+ * id OR the phantom market TypeName. The TypeName is serialized full-padded WITHOUT
+ * a 0x prefix (e.g. 000…002::sui::SUI), while config uses short form (0x2::sui::SUI) —
+ * OverrideApplied carries only the TypeName, so we must compare the canonical no-0x
+ * form too or those events get filtered out of the per-market list. */
+export function eventMatchesMarket(
+  json: Record<string, unknown>,
+  market: { marketType: string; policyId: string; oracleId: string },
+): boolean {
+  const s = JSON.stringify(json);
+  const typeNo0x = normalizeStructTag(market.marketType).replace(/^0x/, "");
+  return (
+    s.includes(market.policyId) ||
+    s.includes(market.oracleId) ||
+    s.includes(market.marketType) ||
+    s.includes(typeNo0x)
+  );
 }

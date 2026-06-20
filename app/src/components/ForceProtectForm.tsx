@@ -5,12 +5,12 @@ import type { PolicyState } from "../lib/parsers";
 import { validateForceProtect, FLAG_LABELS, KNOWN_FLAGS } from "../lib/monotonic";
 import { buildForceProtect } from "../lib/tx";
 import { useCaps, useExecute } from "../hooks/useChain";
-import { gate } from "../lib/caps";
+import { gate, overrideCapIdFor } from "../lib/caps";
 
 export function ForceProtectForm({ market, policy }: { market: MarketConfig; policy: PolicyState }) {
   const { caps } = useCaps();
   const execute = useExecute();
-  const capId = caps.overrideCapIds[market.marketType] ?? null;
+  const capId = overrideCapIdFor(caps, market.marketType);
   const g = gate(capId, `OverrideCap<${market.label}>`);
 
   const [ltv, setLtv] = useState(String(policy.ltvBps));
