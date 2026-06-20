@@ -5,9 +5,24 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { normalizeStructTag } from "@mysten/sui/utils";
+import { normalizeStructTag, fromBase64, fromHex } from "@mysten/sui/utils";
 
 const n = (v: string | number): number => Number(v);
+
+/** A Move `vector<u8>` reaches us in different shapes per transport: a number[]
+ * (JSON-RPC / mock), a base64 string (gRPC `core.getObject` json), or a 0x-hex
+ * string. Normalize to number[] so renderers can `.map` safely. The live
+ * upgrade-digest crash (UpgradesPage `digest.map is not a function`) was this:
+ * gRPC returned base64 but parseRegistry cast it `as number[]`. */
+export function toBytes(v: unknown): number[] {
+  if (Array.isArray(v)) return v.map((x) => Number(x) & 0xff);
+  if (typeof v === "string") {
+    if (v.startsWith("0x")) return Array.from(fromHex(v));
+    try { return Array.from(fromBase64(v)); }
+    catch { return Array.from(fromHex(v)); }
+  }
+  return [];
+}
 
 /** Tolerates both `{type, fields: {...}}` wrappers and flat records. */
 const unwrap = (s: any): Record<string, any> => (s && typeof s === "object" && "fields" in s ? s.fields : s);
@@ -67,7 +82,7 @@ export function parseRegistry(f: Record<string, any>): RegistryState {
     timelockMs: n(f.timelock_ms), epoch: n(f.epoch),
     capVersion: n(unwrap(f.cap).version),
     pending: p
-      ? { digest: p.digest as number[], policy: n(p.policy),
+      ? { digest: toBytes(p.digest), policy: n(p.policy),
           proposedAtMs: n(p.proposed_at_ms), epoch: n(p.epoch) }
       : null,
   };

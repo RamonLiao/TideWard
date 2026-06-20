@@ -60,6 +60,26 @@ describe("parseRegistry", () => {
     } as never);
     expect(r.pending).toMatchObject({ proposedAtMs: 1718000000000, policy: 0 });
   });
+  // Live-only regression: gRPC core.getObject json serializes vector<u8> as a
+  // base64 STRING, not number[]. UpgradesPage does `pending.digest.map(...)`, so
+  // a string digest crashed the page ("digest.map is not a function"). parseRegistry
+  // must normalize every transport form to number[] or the live propose path breaks.
+  it("normalizes a base64-string digest (gRPC json) to number[]", () => {
+    const r = parseRegistry({
+      timelock_ms: "259200000", epoch: "0",
+      pending: { digest: "AQIetw==", policy: 0, proposed_at_ms: "1718000000000", epoch: "0" },
+      cap: { version: "1", policy: 0 },
+    } as never);
+    expect(r.pending!.digest).toEqual([1, 2, 30, 183]);
+  });
+  it("normalizes a 0x-hex digest to number[]", () => {
+    const r = parseRegistry({
+      timelock_ms: "259200000", epoch: "0",
+      pending: { digest: "0x01021eb7", policy: 128, proposed_at_ms: "1", epoch: "0" },
+      cap: { version: "1", policy: 0 },
+    } as never);
+    expect(r.pending!.digest).toEqual([1, 2, 30, 183]);
+  });
 });
 
 describe("parseEvent", () => {
