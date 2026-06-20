@@ -101,6 +101,62 @@ export function parseEvent(raw: { id: { txDigest: string; eventSeq: string }; ty
   };
 }
 
+// === Human-readable event formatting (for the ticker) =======================
+// The raw parsedJson is unreadable in a marquee (full-padded TypeNames, 32-byte
+// digest arrays, addresses). Turn each event into one short plain-language line.
+
+const shortAddr = (a: unknown): string => {
+  const s = String(a ?? "");
+  return s.length > 12 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
+};
+
+/** Phantom market TypeName ("000…002::sui::SUI" or "0x2::sui::SUI") → coin symbol. */
+const marketLabel = (m: unknown): string => {
+  const name = (m && typeof m === "object" && "name" in m ? (m as any).name : m) ?? "";
+  const seg = String(name).split("::").pop();
+  return seg || String(name);
+};
+
+/** digest as number[] | base64 | hex → "0xabcd…1234". */
+const digestLabel = (d: unknown): string => {
+  const bytes = toBytes(d);
+  if (!bytes.length) return "0x?";
+  const hex = bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hex.length > 12 ? `0x${hex.slice(0, 4)}…${hex.slice(-4)}` : `0x${hex}`;
+};
+
+const UPGRADE_POLICY: Record<number, string> = { 0: "COMPATIBLE", 128: "ADDITIVE", 192: "DEP_ONLY" };
+
+/** One concise human-readable line for a chain event. Falls back to the raw JSON
+ * for any event type we don't special-case, so nothing is silently dropped. */
+export function formatEvent(e: ChainEvent): string {
+  const j = e.json as Record<string, any>;
+  switch (e.name) {
+    case "ScorePosted":
+      return `Score posted · ${marketLabel(j.market)} ${n(j.score_bps)}bps · nonce ${n(j.nonce)}`;
+    case "ActionExecuted":
+      return `Action #${n(j.action_id)} · ${marketLabel(j.market)} LTV ${n(j.prev_ltv)}→${n(j.new_ltv)}bps · score ${n(j.score_bps)}`;
+    case "ActionReverted":
+      return `Action #${n(j.action_id)} reverted · ${marketLabel(j.market)} · by ${shortAddr(j.by)}`;
+    case "OraclePaused":
+      return `⏸ Oracle paused · by ${shortAddr(j.by)}`;
+    case "OracleResumed":
+      return `▶ Oracle resumed · by ${shortAddr(j.by)}`;
+    case "MarketRegistered":
+      return `Market registered · ${marketLabel(j.market)}`;
+    case "UpgradeProposed":
+      return `Upgrade proposed · epoch ${n(j.epoch)} · ${UPGRADE_POLICY[n(j.policy)] ?? `policy ${n(j.policy)}`} · digest ${digestLabel(j.digest)} · ETA ${new Date(n(j.eta_ms)).toLocaleString()}`;
+    case "UpgradeCancelled":
+      return `Upgrade cancelled · epoch ${n(j.epoch)} · digest ${digestLabel(j.digest)} · by ${shortAddr(j.by)}`;
+    case "UpgradeExecuted":
+      return `Upgrade executed · epoch ${n(j.epoch)} · digest ${digestLabel(j.digest)}`;
+    case "OverrideApplied":
+      return `🛡 Override #${n(j.action_id)} · ${marketLabel(j.market)} LTV ${n(j.prev_ltv)}→${n(j.new_ltv)}bps · reason ${n(j.reason_code)} · by ${shortAddr(j.by)}`;
+    default:
+      return JSON.stringify(j);
+  }
+}
+
 /** True when a package event belongs to the given market. Matches on policy/oracle
  * id OR the phantom market TypeName. The TypeName is serialized full-padded WITHOUT
  * a 0x prefix (e.g. 000…002::sui::SUI), while config uses short form (0x2::sui::SUI) —

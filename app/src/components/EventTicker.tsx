@@ -1,22 +1,42 @@
 import { useEvents } from "../hooks/useChain";
+import { formatEvent, type ChainEvent } from "../lib/parsers";
 
 const COLOR: Record<string, string> = {
   OverrideApplied: "status-warn", ActionReverted: "status-warn",
   OraclePaused: "status-bad", OracleResumed: "status-ok",
+  UpgradeProposed: "status-warn", UpgradeCancelled: "status-bad", UpgradeExecuted: "status-ok",
+  MarketRegistered: "status-ok",
 };
+
+function Item({ e }: { e: ChainEvent }) {
+  return (
+    <span className="ticker-item">
+      <span className="dim">{new Date(e.tsMs).toLocaleTimeString()}</span>{" "}
+      <span className={COLOR[e.name] ?? ""}>{formatEvent(e)}</span>
+    </span>
+  );
+}
 
 export function EventTicker() {
   const events = useEvents();
+  const items = (events.data ?? []).slice(0, 20);
   return (
     <footer className="ticker">
-      <span style={{ color: "var(--cyan-soft)" }}>EVENT STREAM ▸</span>
-      {(events.data ?? []).slice(0, 20).map((e) => (
-        <span key={e.key}>
-          {new Date(e.tsMs).toLocaleTimeString()}{" "}
-          <span className={COLOR[e.name] ?? ""}>{e.name}</span>{" "}
-          <span className="dim">{JSON.stringify(e.json)}</span>
-        </span>
-      ))}
+      <span className="ticker-label">EVENT STREAM ▸</span>
+      {items.length === 0 ? (
+        <span className="dim">waiting for events…</span>
+      ) : (
+        // Duplicate the list so the marquee loops seamlessly (the animation
+        // translates by -50%, landing the 2nd copy exactly where the 1st began).
+        // Pause on hover so a reader can stop and read a line.
+        <div className="ticker-track">
+          {[0, 1].map((dup) => (
+            <div className="ticker-run" key={dup} aria-hidden={dup === 1}>
+              {items.map((e) => <Item key={`${dup}:${e.key}`} e={e} />)}
+            </div>
+          ))}
+        </div>
+      )}
     </footer>
   );
 }

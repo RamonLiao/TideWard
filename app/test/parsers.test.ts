@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePolicy, parseOracle, parseRegistry, parseEvent, eventMatchesMarket } from "../src/lib/parsers";
+import { parsePolicy, parseOracle, parseRegistry, parseEvent, eventMatchesMarket, formatEvent } from "../src/lib/parsers";
 
 const policyFields = {
   ltv_bps: 4000, ltv_default_bps: 5000, flags: 1,
@@ -93,6 +93,26 @@ describe("parseEvent", () => {
     expect(e.name).toBe("OverrideApplied");
     expect(e.tsMs).toBe(1718000000000);
     expect(e.json).toEqual({ reason_code: 2 });
+  });
+});
+
+describe("formatEvent", () => {
+  const mk = (name: string, json: Record<string, unknown>) =>
+    formatEvent({ key: "k", name, tsMs: 0, json });
+  const market = { name: "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI" };
+  const addr = "0xbdecf8a2fd1db5dfd049830a4ff5da5836d250b938a1e81f46157fdbdc3ee01f";
+
+  it("renders OverrideApplied as a plain sentence with coin symbol + short addr", () => {
+    const s = mk("OverrideApplied", { action_id: "0", market, prev_ltv: 5000, new_ltv: 4000, prev_flags: 0, new_flags: 0, reason_code: 7, by: addr });
+    expect(s).toBe("🛡 Override #0 · SUI LTV 5000→4000bps · reason 7 · by 0xbdec…e01f");
+  });
+  it("renders UpgradeCancelled with a truncated digest (array form)", () => {
+    const s = mk("UpgradeCancelled", { digest: Array(32).fill(17), epoch: "1", by: addr });
+    expect(s).toBe("Upgrade cancelled · epoch 1 · digest 0x1111…1111 · by 0xbdec…e01f");
+  });
+  // The ticker must never silently drop an event type we forgot to handle.
+  it("falls back to raw JSON for unknown event names", () => {
+    expect(mk("SomethingNew", { x: 1 })).toBe('{"x":1}');
   });
 });
 

@@ -75,9 +75,26 @@ body {
 }
 
 .ticker {
-  display: flex; align-items: center; gap: 16px; padding: 0 16px; overflow-x: auto;
+  display: flex; align-items: center; gap: 16px; padding: 0 16px; overflow: hidden;
   white-space: nowrap; border-top: 1px dashed var(--border-dim);
   font-size: 11px; color: var(--cyan-dim);
+}
+.ticker-label { flex: none; color: var(--cyan-soft); z-index: 1; }
+/* Track holds two identical runs side by side; translating -50% loops seamlessly. */
+.ticker-track { flex: 1; overflow: hidden; display: flex; width: 100%; }
+.ticker-run {
+  display: flex; flex: none; align-items: center;
+  animation: ticker-scroll 60s linear infinite;
+}
+.ticker-track:hover .ticker-run { animation-play-state: paused; }
+.ticker-item { flex: none; padding-right: 40px; }
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-run { animation: none; }
+  .ticker-track { overflow-x: auto; }
 }
 
 .drawer {
