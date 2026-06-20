@@ -93,6 +93,7 @@ describe("parseEvent", () => {
     expect(e.name).toBe("OverrideApplied");
     expect(e.tsMs).toBe(1718000000000);
     expect(e.json).toEqual({ reason_code: 2 });
+    expect(e.txDigest).toBe("D"); // drives the explorer deep-link on click
   });
 });
 

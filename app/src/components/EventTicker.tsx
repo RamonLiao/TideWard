@@ -1,5 +1,6 @@
 import { useEvents } from "../hooks/useChain";
 import { formatEvent, type ChainEvent } from "../lib/parsers";
+import { explorerTxUrl } from "../config";
 
 const COLOR: Record<string, string> = {
   OverrideApplied: "status-warn", ActionReverted: "status-warn",
@@ -10,10 +11,16 @@ const COLOR: Record<string, string> = {
 
 function Item({ e }: { e: ChainEvent }) {
   return (
-    <span className="ticker-item">
+    <a
+      className="ticker-item"
+      href={explorerTxUrl(e.txDigest)}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open transaction in explorer ↗"
+    >
       <span className="dim">{new Date(e.tsMs).toLocaleTimeString()}</span>{" "}
       <span className={COLOR[e.name] ?? ""}>{formatEvent(e)}</span>
-    </span>
+    </a>
   );
 }
 

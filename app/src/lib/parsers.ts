@@ -89,12 +89,13 @@ export function parseRegistry(f: Record<string, any>): RegistryState {
 }
 
 export interface ChainEvent {
-  key: string; name: string; tsMs: number; json: Record<string, unknown>;
+  key: string; name: string; tsMs: number; json: Record<string, unknown>; txDigest: string;
 }
 
 export function parseEvent(raw: { id: { txDigest: string; eventSeq: string }; type: string; parsedJson: Record<string, unknown>; timestampMs?: string }): ChainEvent {
   return {
     key: `${raw.id.txDigest}:${raw.id.eventSeq}`,
+    txDigest: raw.id.txDigest,
     name: raw.type.split("::").pop() ?? raw.type,
     tsMs: raw.timestampMs ? Number(raw.timestampMs) : 0,
     json: raw.parsedJson,

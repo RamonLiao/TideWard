@@ -13,6 +13,15 @@ export const RPC_URL = req("VITE_RPC_URL");
 export const REGISTRY_ID = req("VITE_REGISTRY_ID");
 export const CLOCK_ID = "0x6";
 
+// Derive network from the RPC endpoint so the explorer links match the chain
+// we're actually reading (mainnet/testnet/devnet), defaulting to testnet.
+export const NETWORK: "mainnet" | "testnet" | "devnet" =
+  /mainnet/.test(RPC_URL) ? "mainnet" : /devnet/.test(RPC_URL) ? "devnet" : "testnet";
+
+/** Block-explorer URL for a transaction digest (Suiscan). */
+export const explorerTxUrl = (digest: string): string =>
+  `https://suiscan.xyz/${NETWORK}/tx/${digest}`;
+
 export interface MarketConfig {
   label: string;
   marketType: string; // phantom M
