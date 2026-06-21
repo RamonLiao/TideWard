@@ -38,7 +38,14 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <span className="brand">⬡ RISKGUARD</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <img
+          src="/tideward_turtle_logo.png"
+          alt="TideWard Logo"
+          style={{ width: "32px", height: "32px", borderRadius: "6px" }}
+        />
+        <span className="brand" style={{ display: "inline-block", alignSelf: "center" }}>TIDEWARD</span>
+      </div>
       <OracleLight />
       <button className="btn btn-danger" disabled={!g.enabled || busy} title={g.tooltip ?? ""} onClick={onPause}>
         {busy ? "PAUSING…" : "⏸ EMERGENCY PAUSE"}

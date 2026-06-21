@@ -41,9 +41,9 @@ const REASON_CODES = [
 export function DocsPage() {
   return (
     <div style={{ maxWidth: 760 }}>
-      <h2 style={{ margin: "0 0 6px", color: "var(--cyan)", fontSize: 16 }}>📖 DOCS — HOW TO USE RISKGUARD</h2>
+      <h2 style={{ margin: "0 0 6px", color: "var(--cyan)", fontSize: 16 }}>📖 DOCS — HOW TO USE TIDEWARD</h2>
       <p className="dim" style={{ fontSize: 13, marginBottom: 18 }}>
-        RiskGuard is a <b>safety dashboard for a lending market</b>. Think of a lending market like a
+        TideWard is a <b>safety dashboard for a lending market</b>. Think of a lending market like a
         machine that lets people borrow money against the crypto they put in. If something scary
         happens (a price goes crazy, a hack), an operator can hit the brakes here — and every brake
         press is written to the blockchain so nobody can do it secretly.

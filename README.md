@@ -1,5 +1,9 @@
 # TideWard 🌊🛡️
 
+<p align="center">
+  <img src="docs/assets/tideward_turtle_logo.png" width="220" alt="TideWard Turtle Mascot Logo" />
+</p>
+
 **Autonomous AI Risk Guardian for Sui DeFi**
 
 *Sui Overflow 2026 Hackathon — Track 0: Agentic Web (Sub-track 1: Autonomous Risk Guardian)*
