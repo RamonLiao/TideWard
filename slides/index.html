@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TideWard — Pitch Deck</title>
+<style>
+  :root {
+    --abyss: #04141f;
+    --deep:  #072634;
+    --teal:  #0c3a4d;
+    --aqua:  #38e1c6;
+    --aqua2: #5ad1ff;
+    --sand:  #f2ede0;
+    --ink:   #e9f6f4;
+    --mute:  #8fb3ba;
+    --danger:#ff6b6b;
+    --gold:  #ffd166;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--abyss);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- track ---- */
+  .deck {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    cursor: grab;
+  }
+  .deck::-webkit-scrollbar { display: none; }
+  .deck.dragging { cursor: grabbing; scroll-behavior: auto; }
+
+  .slide {
+    flex: 0 0 100vw;
+    height: 100vh;
+    scroll-snap-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(32px, 7vw, 120px);
+    position: relative;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(56,225,198,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(90,209,255,.08), transparent 60%),
+      linear-gradient(160deg, var(--abyss), var(--deep) 60%, var(--teal));
+    overflow: hidden;
+  }
+  /* subtle tide lines */
+  .slide::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.015) 0 2px, transparent 2px 46px);
+    pointer-events: none;
+  }
+
+  .kicker {
+    font-size: clamp(11px, 1.1vw, 14px);
+    letter-spacing: .32em;
+    text-transform: uppercase;
+    color: var(--aqua);
+    font-weight: 700;
+    margin-bottom: 22px;
+  }
+  h1 { font-size: clamp(40px, 8vw, 104px); line-height: .98; letter-spacing: -.03em; font-weight: 800; }
+  h2 { font-size: clamp(28px, 4.6vw, 60px); line-height: 1.04; letter-spacing: -.02em; font-weight: 800; max-width: 16ch; }
+  p.lead { font-size: clamp(16px, 1.9vw, 24px); color: var(--mute); max-width: 56ch; margin-top: 26px; line-height: 1.5; }
+  .accent { color: var(--aqua); }
+  .accent2 { color: var(--aqua2); }
+  .danger { color: var(--danger); }
+
+  .z { position: relative; z-index: 2; }
+
+  /* title slide */
+  .brand { display: flex; align-items: center; gap: 26px; margin-bottom: 8px; }
+  .brand img { width: clamp(90px, 12vw, 170px); height: auto; filter: drop-shadow(0 14px 40px rgba(56,225,198,.35)); }
+  .wordmark { font-size: clamp(44px, 9vw, 120px); font-weight: 800; letter-spacing: -.04em; }
+  .tag { margin-top: 30px; font-size: clamp(18px, 2.4vw, 30px); color: var(--ink); font-weight: 600; }
+  .sub { margin-top: 14px; color: var(--mute); font-size: clamp(13px, 1.4vw, 17px); letter-spacing: .04em; }
+
+  /* cards grid */
+  .grid { display: grid; gap: 18px; margin-top: 40px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .card {
+    background: linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    border: 1px solid rgba(56,225,198,.18);
+    border-radius: 18px;
+    padding: 26px;
+    backdrop-filter: blur(6px);
+  }
+  .card .num { font-size: 13px; font-weight: 800; color: var(--aqua); letter-spacing: .2em; }
+  .card h3 { font-size: clamp(17px, 1.7vw, 22px); margin: 12px 0 8px; font-weight: 700; letter-spacing: -.01em; }
+  .card p { font-size: clamp(13px, 1.3vw, 15.5px); color: var(--mute); line-height: 1.5; }
+
+  /* flow pipeline */
+  .flow { display: flex; align-items: stretch; gap: 14px; margin-top: 46px; flex-wrap: wrap; }
+  .node {
+    flex: 1; min-width: 150px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(90,209,255,.22);
+    border-radius: 16px; padding: 22px 20px;
+  }
+  .node .lbl { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--aqua2); font-weight: 700; }
+  .node .big { font-size: clamp(16px, 1.7vw, 21px); font-weight: 700; margin-top: 10px; line-height: 1.2; }
+  .node .desc { font-size: 13px; color: var(--mute); margin-top: 8px; line-height: 1.45; }
+  .node.exec { border-color: rgba(56,225,198,.5); background: rgba(56,225,198,.07); }
+  .node.dao  { border-color: rgba(255,209,102,.45); background: rgba(255,209,102,.06); }
+  .arrow { align-self: center; color: var(--aqua); font-size: 26px; opacity: .7; }
+
+  /* stat row */
+  .stats { display: flex; gap: 56px; margin-top: 44px; flex-wrap: wrap; }
+  .stat .v { font-size: clamp(34px, 5vw, 64px); font-weight: 800; letter-spacing: -.03em; color: var(--aqua); }
+  .stat .k { font-size: 14px; color: var(--mute); margin-top: 6px; letter-spacing: .04em; }
+
+  .steps { margin-top: 40px; display: grid; gap: 16px; max-width: 70ch; }
+  .step { display: flex; gap: 22px; align-items: flex-start; }
+  .step .idx {
+    flex: 0 0 52px; height: 52px; border-radius: 14px;
+    display: grid; place-items: center; font-weight: 800; font-size: 22px;
+    background: rgba(56,225,198,.12); border: 1px solid rgba(56,225,198,.4); color: var(--aqua);
+  }
+  .step h3 { font-size: clamp(17px,1.8vw,22px); font-weight: 700; }
+  .step p { color: var(--mute); font-size: clamp(13px,1.3vw,15.5px); margin-top: 5px; line-height: 1.5; }
+
+  .pills { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 30px; }
+  .pill { font-size: 13px; padding: 8px 15px; border-radius: 999px; border: 1px solid rgba(90,209,255,.3); color: var(--ink); background: rgba(90,209,255,.06); font-weight: 600; }
+  .pill.ok::before { content: "✓ "; color: var(--aqua); }
+
+  .footer { position: absolute; bottom: clamp(24px, 4vh, 48px); left: clamp(32px,7vw,120px); color: var(--mute); font-size: 13px; letter-spacing: .06em; z-index: 3; }
+
+  /* nav */
+  .dots { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 11px; z-index: 50; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.22); border: none; cursor: pointer; transition: .25s; padding: 0; }
+  .dot.active { background: var(--aqua); width: 28px; border-radius: 5px; box-shadow: 0 0 14px rgba(56,225,198,.6); }
+  .nav-btn {
+    position: fixed; top: 50%; transform: translateY(-50%);
+    width: 52px; height: 52px; border-radius: 50%; z-index: 50; cursor: pointer;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(56,225,198,.3);
+    color: var(--ink); font-size: 22px; display: grid; place-items: center;
+    transition: .2s; backdrop-filter: blur(6px);
+  }
+  .nav-btn:hover { background: rgba(56,225,198,.18); }
+  .nav-btn.prev { left: 22px; }
+  .nav-btn.next { right: 22px; }
+  .counter { position: fixed; top: 22px; right: 26px; z-index: 50; color: var(--mute); font-size: 13px; letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+  .progress { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--aqua), var(--aqua2)); z-index: 60; transition: width .3s; }
+  .hint { position: fixed; bottom: 22px; right: 26px; z-index: 50; color: var(--mute); font-size: 12px; letter-spacing: .05em; opacity: .7; }
+  @media (max-width: 720px) {
+    .g2,.g3,.g4 { grid-template-columns: 1fr 1fr; }
+    .nav-btn { display: none; }
+    .stats { gap: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide">
+    <div class="z">
+      <div class="brand">
+        <img src="../docs/assets/tideward_turtle_logo.png" alt="TideWard" onerror="this.style.display='none'" />
+        <span class="wordmark">TideWard</span>
+      </div>
+      <div class="kicker" style="margin-top:18px">🌊🛡️ Autonomous AI Risk Guardian for Sui DeFi</div>
+      <div class="tag">Off-chain risk intelligence. <span class="accent">On-chain enforcement.</span> Absolute DAO control.</div>
+      <div class="sub">Sui Overflow 2026 · Track 0 Agentic Web · Sub-track 1 — Autonomous Risk Guardian</div>
+    </div>
+    <div class="footer">← / → · drag · swipe</div>
+  </section>
+
+  <!-- 2 · PROBLEM -->
+  <section class="slide">
+    <div class="z">
+      <div class="kicker">The Pain Point</div>
+      <h2>Static risk params in <span class="danger">dynamic</span> markets</h2>
+      <p class="lead">DeFi lending & perps sit on billions in TVL, yet rely on <strong>static LTV / caps / rates</strong> and <strong>human governance</strong> that takes days to react. When a stablecoin de-pegs or an oracle deviates, markets collapse in <span class="danger">seconds</span>.</p>
+      <div class="stats">
+        <div class="stat"><div class="v danger">$100Ms</div><div class="k">bad debt from governance latency<br>(Euler · Aave wstETH · rsETH)</div></div>
+        <div class="stat"><div class="v">webhooks</div><div class="k">EVM tools only alert —<br>they can't act autonomously</div></div>
+        <div class="stat"><div class="v">0</div><div class="k">native autonomous risk<br>agents shipped on Sui</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · SOLUTION -->
+  <section class="slide">
+    <div class="z">
+      <div class="kicker">The Solution</div>
+      <h2>TideWard bridges <span class="accent">intelligence</span> and <span class="accent2">enforcement</span></h2>
+      <p class="lead">An autonomous off-chain AI risk agent that talks directly to a Sui Move <strong>Policy Object</strong>, adjusting protocol parameters in real time — while preserving absolute DAO control via Sui's native capability pattern.</p>
+      <div class="pills">
+        <span class="pill ok">Atomic PTB execution</span>
+        <span class="pill ok">VM-level 1-line assert gate</span>
+        <span class="pill ok">First-class DAO override</span>
+        <span class="pill ok">Per-market blast radius</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · HOW IT WORKS -->
+  <section class="slide">
+    <div class="z" style="width:100%">
+      <div class="kicker">How It Works</div>
+      <h2>Feed → Score → Act → Gate</h2>
+      <div class="flow">
+        <div class="node"><div class="lbl">Oracles</div><div class="big">Pyth &amp; Switchboard</div><div class="desc">Live price + confidence feeds</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="lbl">Scorer</div><div class="big">AI Risk Score</div><div class="desc">Real-time risk index, threshold crossing</div></div>
+        <div class="arrow">→</div>
+        <div class="node exec"><div class="lbl">Executor</div><div class="big">Autonomous PTB</div><div class="desc">Caps LTV · pauses market — atomic, on-chain</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="lbl">On-chain</div><div class="big">RiskPolicy&lt;M&gt;</div><div class="desc">Protocol consults it before every action</div></div>
+      </div>
+      <div class="flow" style="margin-top:18px">
+        <div class="node dao" style="flex:0 0 auto;min-width:280px"><div class="lbl">DAO Multisig</div><div class="big">OverrideCap → revert any action</div><div class="desc">Single-click rollback within the override window (e.g. 60s demo / 24h prod)</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · KEY PILLARS -->
+  <section class="slide">
+    <div class="z" style="width:100%">
+      <div class="kicker">Why It's Different</div>
+      <h2>Four pillars</h2>
+      <div class="grid g4">
+        <div class="card"><div class="num">01</div><h3>Autonomous enforcement</h3><p>Not alerts — it executes atomic PTBs to adjust params on-chain, no human in the loop.</p></div>
+        <div class="card"><div class="num">02</div><h3>Move Policy Objects</h3><p>Protocols integrate one assertion line. Core code consults <span class="accent">RiskPolicy</span> at the VM level.</p></div>
+        <div class="card"><div class="num">03</div><h3>First-class DAO override</h3><p>Sui's native <span class="accent">Capability</span> pattern: the DAO holds an OverrideCap to instantly revert.</p></div>
+        <div class="card"><div class="num">04</div><h3>Granular blast radius</h3><p>Object model scopes policy <span class="accent">per pool/market</span> — not protocol-wide globals.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · ON-CHAIN -->
+  <section class="slide">
+    <div class="z" style="width:100%">
+      <div class="kicker">On-Chain · Sui Move</div>
+      <h2>Capability-gated, fully tested</h2>
+      <div class="grid g3">
+        <div class="card"><h3>policy / oracle</h3><p>RiskPolicy&lt;M&gt;, pending-action snapshots, cascading revert, asymmetric rate-limit (tighten 0-cooldown / loosen throttled).</p></div>
+        <div class="card"><h3>pyth_adapter</h3><p>Sole production minting path for PriceReading; feed-id bound to oracle, canonical staleness check.</p></div>
+        <div class="card"><h3>override</h3><p>Monotonic-protective force_protect — can only lower LTV / add flags, bypassing oracle.</p></div>
+        <div class="card"><h3>upgrade_registry</h3><p>UpgradeCap wrapped, <span class="accent">72h timelock</span>, permissionless execute, AdminCap cancel — transparent.</p></div>
+        <div class="card"><h3>caps / admin</h3><p>Admin / Publisher / Emergency / Override caps. Per-market registration, no external-id misbind.</p></div>
+        <div class="card"><h3>verified</h3><p><span class="accent">60 Move tests</span> · 0 warnings · 3-round review (quality · security-guard · red-team, 0 EXPLOITED).</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 · DEMO -->
+  <section class="slide">
+    <div class="z">
+      <div class="kicker">Hackathon MVP Demo</div>
+      <h2>De-peg → auto-cut → DAO rollback</h2>
+      <div class="steps">
+        <div class="step"><div class="idx">1</div><div><h3>Real-time dashboard</h3><p>Live SUI/USDC/BUCK oracle feeds + the AI risk score, streaming on-chain events as a readable ticker.</p></div></div>
+        <div class="step"><div class="idx">2</div><div><h3>Autonomous intervention</h3><p>A simulated de-peg trips the threshold → TideWard pushes a live Pyth update through <span class="accent">post_score_and_apply</span> → LTV auto-tightens on-chain (8500 score → 3000 bps).</p></div></div>
+        <div class="step"><div class="idx">3</div><div><h3>DAO rollback</h3><p>The OverrideCap holder reverts the parameter change in one click — witnessed on-chain within the override window.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 · STATUS / CLOSE -->
+  <section class="slide">
+    <div class="z">
+      <div class="kicker">Status</div>
+      <h2>Live on Sui <span class="accent">testnet</span>, end-to-end</h2>
+      <div class="stats">
+        <div class="stat"><div class="v">60</div><div class="k">Move tests · 0 warnings</div></div>
+        <div class="stat"><div class="v">35</div><div class="k">frontend tests green</div></div>
+        <div class="stat"><div class="v">E2E</div><div class="k">read + write paths verified live</div></div>
+      </div>
+      <div class="pills">
+        <span class="pill ok">Pyth PTB integration live</span>
+        <span class="pill ok">72h timelock upgrade flow proven</span>
+        <span class="pill ok">DAO console (React + dApp-kit)</span>
+        <span class="pill ok">Monkey-tested A+B</span>
+      </div>
+      <p class="lead" style="margin-top:34px"><strong class="accent">TideWard</strong> — when the tide turns, the guardian acts. Thank you. 🌊🛡️</p>
+    </div>
+    <div class="footer">github.com/RamonLiao/TideWard</div>
+  </section>
+
+</div>
+
+<!-- chrome -->
+<button class="nav-btn prev" id="prev" aria-label="Previous">‹</button>
+<button class="nav-btn next" id="next" aria-label="Next">›</button>
+<div class="counter" id="counter">01 / 08</div>
+<div class="dots" id="dots"></div>
+<div class="hint">← → keys · drag · swipe</div>
+
+<script>
+  const deck = document.getElementById('deck');
+  const slides = [...deck.children];
+  const N = slides.length;
+  const dotsWrap = document.getElementById('dots');
+  const counter = document.getElementById('counter');
+  const progress = document.getElementById('progress');
+
+  // dots
+  slides.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.className = 'dot' + (i === 0 ? ' active' : '');
+    b.onclick = () => go(i);
+    dotsWrap.appendChild(b);
+  });
+  const dots = [...dotsWrap.children];
+
+  let cur = 0;
+  const clamp = i => Math.max(0, Math.min(N - 1, i));
+  function go(i) {
+    cur = clamp(i);
+    deck.scrollTo({ left: cur * window.innerWidth, behavior: 'smooth' });
+    sync();
+  }
+  function sync() {
+    dots.forEach((d, i) => d.classList.toggle('active', i === cur));
+    counter.textContent = String(cur + 1).padStart(2, '0') + ' / ' + String(N).padStart(2, '0');
+    progress.style.width = ((cur + 1) / N * 100) + '%';
+  }
+
+  document.getElementById('prev').onclick = () => go(cur - 1);
+  document.getElementById('next').onclick = () => go(cur + 1);
+
+  // keyboard
+  addEventListener('keydown', e => {
+    if (['ArrowRight', 'ArrowDown', ' ', 'PageDown'].includes(e.key)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(N - 1);
+  });
+
+  // keep index in sync when scrolled/swiped natively
+  let t;
+  deck.addEventListener('scroll', () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const i = Math.round(deck.scrollLeft / window.innerWidth);
+      if (i !== cur) { cur = i; sync(); }
+    }, 80);
+  });
+
+  // mouse drag-to-scroll (desktop)
+  let down = false, startX = 0, startScroll = 0, moved = false;
+  deck.addEventListener('mousedown', e => { down = true; moved = false; startX = e.pageX; startScroll = deck.scrollLeft; deck.classList.add('dragging'); });
+  addEventListener('mouseup', () => {
+    if (!down) return;
+    down = false; deck.classList.remove('dragging');
+    if (moved) go(Math.round(deck.scrollLeft / window.innerWidth)); // snap to nearest
+  });
+  addEventListener('mousemove', e => {
+    if (!down) return;
+    const dx = e.pageX - startX;
+    if (Math.abs(dx) > 4) moved = true;
+    deck.scrollLeft = startScroll - dx;
+  });
+
+  addEventListener('resize', () => deck.scrollTo({ left: cur * window.innerWidth }));
+  sync();
+</script>
+</body>
+</html>
